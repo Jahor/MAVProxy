@@ -27,11 +27,12 @@ class Joystick(mp_module.MPModule):
                                        'A flexible joystick driver')
 
         self.joystick = None
+        self.joystick_settings = None
 
         self.init_pygame()
         self.init_settings()
         self.init_commands()
-
+        self.load_definitions()
         self.probe()
 
     def log(self, msg, level=0):
@@ -43,16 +44,18 @@ class Joystick(mp_module.MPModule):
     def init_pygame(self):
         self.log('Initializing pygame', 2)
         pygame.init()
-        pygame.joystick.init()
 
     def init_settings(self):
-        pass
+        self.joystick_settings = mp_settings.MPSettings(
+                    [('autoprobe', bool, False)])
+        self.add_completion_function('(JOYSTICKSETTING)',
+                    self.joystick_settings.completion)
 
     def init_commands(self):
         self.log('Initializing commands', 2)
         self.add_command('joystick', self.cmd_joystick,
                          "A flexible joystick drvier",
-                         ['status',  'probe'])
+                         ['status',  'probe', 'set (JOYSTICKSETTING)'])
 
     def load_definitions(self):
         self.log('Loading joystick definitions', 1)
@@ -85,9 +88,9 @@ class Joystick(mp_module.MPModule):
                         joydef['path'] = joypath
                         self.joydefs.append(joydef)
 
-    def probe(self):
-        self.load_definitions()
-
+    def probe(self, quiet=False):
+        pygame.joystick.quit()
+        pygame.joystick.init()
         for jid in range(pygame.joystick.get_count()):
             joy = pygame.joystick.Joystick(jid)
             self.log("Found joystick (%s)" % (joy.get_name(),))
@@ -103,8 +106,8 @@ class Joystick(mp_module.MPModule):
                             joydef['path'], joy.get_name(), pattern))
                         self.joystick = controls.Joystick(joy, joydef)
                         return
-
-        print('{}: Failed to find matching joystick.'.format(__name__))
+        if not quiet:
+            print('{}: Failed to find matching joystick.'.format(__name__))
 
     def usage(self):
         '''show help on command line options'''
@@ -119,6 +122,8 @@ class Joystick(mp_module.MPModule):
             self.cmd_probe()
         elif args[0] == 'help':
             self.cmd_help()
+        elif args[0] == 'set':
+            self.joystick_settings.command(args[1:])
 
     def cmd_help(self):
         print('joystick probe -- reload and match joystick definitions')
@@ -126,6 +131,7 @@ class Joystick(mp_module.MPModule):
 
     def cmd_probe(self):
         self.log('Re-detecting available joysticks', 0)
+        self.load_definitions()
         self.probe()
 
     def cmd_status(self):
@@ -136,10 +142,33 @@ class Joystick(mp_module.MPModule):
             print('Path: {path}'.format(**self.joystick.controls))
             print('Description: {description}'.format(
                 **self.joystick.controls))
+            print('instance id: %s; power: %s; name: %s' % (self.joystick.joystick.get_instance_id(), self.joystick.joystick.get_power_level(), self.joystick.joystick.get_name()))
+
+    def detect_disconnected(self):
+        if self.joystick is not None:
+            found = False
+            for jid in range(pygame.joystick.get_count()):
+                joy = pygame.joystick.Joystick(jid)
+                if joy.get_guid() == self.joystick.joystick.get_guid():
+                    if joy.get_instance_id() == self.joystick.joystick.get_instance_id():
+                        found = True
+                        break
+                    else:
+                        self.joystick = controls.Jostick(joy, self.joystick.controls)
+                        print("Joystick %s has been reconnected", self.joystick.joystick.get_name())
+                        break
+            if not found:
+                print("Joystick %s has been disconnected" % self.joystick.joystick.get_name())
+                self.joystick = None
+
 
     def idle_task(self):
+        self.detect_disconnected()
         if self.joystick is None:
-            return
+            if self.joystick_settings.autoprobe:
+                self.probe(quiet=True)
+            if self.joystick is None:
+                return
 
         for e in pygame.event.get():
             override = self.module('rc').override[:]
@@ -152,6 +181,11 @@ class Joystick(mp_module.MPModule):
                 self.module('rc').override = override
                 self.module('rc').override_period.force()
 
+    def unload(self):
+        super(Joystick, self).unload()
+        self.log('Uninitializing pygame', 2)
+        pygame.joystick.quit()
+        pygame.quit()
 
 def init(mpstate):
     '''initialise module'''
