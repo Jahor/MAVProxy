@@ -11,12 +11,19 @@ from pymavlink import mavutil
 
 from MAVProxy.modules.lib import mp_module
 from MAVProxy.modules.lib import mp_util
+from MAVProxy.modules.lib import mp_settings
 
 class OutputModule(mp_module.MPModule):
     def __init__(self, mpstate):
         super(OutputModule, self).__init__(mpstate, "output", "output control", public=True)
+        self.output_settings = mp_settings.MPSettings(
+            [('udptimeout', int, 0),
+             ])
         self.add_command('output', self.cmd_output, "output control",
-                         ["<list|add|remove|sysid>"])
+                         ["list", "add", "remove", "sysid", "set (OUTPUTSETTING)"])
+
+        self.add_completion_function('(OUTPUTSETTING)',
+                                     self.output_settings.completion)
 
     def cmd_output(self, args):
         '''handle output commands'''
@@ -37,8 +44,10 @@ class OutputModule(mp_module.MPModule):
                 print("Usage: output sysid SYSID OUTPUT")
                 return
             self.cmd_output_sysid(args[1:])
+        elif args[0] == "set":
+            self.output_settings.command(args[1:])
         else:
-            print("usage: output <list|add|remove|sysid>")
+            print("usage: output <list|add|remove|sysid|set>")
 
     def cmd_output_list(self):
         '''list outputs'''
@@ -74,7 +83,7 @@ class OutputModule(mp_module.MPModule):
         device = args[1]
         print("Adding output %s for sysid %u" % (device, sysid))
         try:
-            conn = mavutil.mavlink_connection(device, input=False, source_system=self.settings.source_system)
+            conn = mavutil.mavlink_connection(device, input=False, source_system=self.settings.source_system, udp_timeout=self.output_settings.udptimeout)
             conn.mav.srcComponent = self.settings.source_component
         except Exception:
             print("Failed to connect to %s" % device)
