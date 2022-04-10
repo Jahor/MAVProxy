@@ -66,7 +66,7 @@ class OutputModule(mp_module.MPModule):
         device = args[0]
         print("Adding output %s" % device)
         try:
-            conn = mavutil.mavlink_connection(device, input=False, source_system=self.settings.source_system)
+            conn = mavutil.mavlink_connection(device, input=False, source_system=self.settings.source_system, udp_timeout=self.output_settings.udptimeout)
             conn.mav.srcComponent = self.settings.source_component
         except Exception:
             print("Failed to connect to %s" % device)
