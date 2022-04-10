@@ -21,6 +21,7 @@ class NtripModule(mp_module.MPModule):
              ('mountpoint', str, None),
              ('logfile', str, None),
              ('sendalllinks', bool, False),
+             ('timelimit', int, 0),
              ('sendmul', int, 1)])
         self.add_command('ntrip', self.cmd_ntrip, 'NTRIP control',
                          ["<status>",
@@ -33,6 +34,7 @@ class NtripModule(mp_module.MPModule):
         self.pkt_count = 0
         self.last_pkt = None
         self.last_restart = None
+        self.last_start = None
         self.last_rate = None
         self.rate_total = 0
         self.ntrip = None
@@ -41,6 +43,12 @@ class NtripModule(mp_module.MPModule):
         self.logfile = None
         self.id_counts = {}
         self.last_by_id = {}
+
+    def log(self, msg, level=0):
+        if self.mpstate.settings.moddebug < level:
+            return
+
+        print('{}: {}'.format(__name__, msg))
 
     def mavlink_packet(self, msg):
         '''handle an incoming mavlink packet'''
@@ -74,6 +82,12 @@ class NtripModule(mp_module.MPModule):
                 self.start_pending = True
                 self.last_restart = now
             return
+        if self.last_start is not None and time.time() - self.last_start > self.ntrip_settings.timelimit > 0:
+            print("NTRIP restart after timelimit")
+            self.ntrip = None
+            self.start_pending = True
+            return
+
         if time.time() - self.ntrip.dt_last_gga_sent > 2:
             self.ntrip.setPosition(self.pos[0], self.pos[1])
             self.ntrip.send_gga()
@@ -110,6 +124,7 @@ class NtripModule(mp_module.MPModule):
                 links = self.mpstate.mav_master
             else:
                 links = [self.master]
+            self.log(f'Send {self.pkt_count} {len(send_data)} in {fragment} RTCM bytes to {links}', 2)
             for link in links:
                 for d in range(self.ntrip_settings.sendmul):
                     link.mav.gps_rtcm_data_send(flags | (fragment<<1), frag_len, send_data)
@@ -179,6 +194,7 @@ class NtripModule(mp_module.MPModule):
         print("NTRIP started")
         self.start_pending = False
         self.last_rate = time.time()
+        self.last_start = time.time()
         self.rate_total = 0
 
 
