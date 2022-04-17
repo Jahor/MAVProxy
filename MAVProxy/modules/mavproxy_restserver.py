@@ -6,9 +6,8 @@ Patrick Jose Pereira
 April 2018
 '''
 
-import time
 import json
-import socket
+import typing
 from threading import Thread
 
 from flask import Flask
@@ -60,8 +59,9 @@ class RestServer():
         '''set ip and port'''
         self.address = ip
         self.port = port
-        self.stop()
-        self.start()
+        if self.running():
+            self.stop()
+            self.start()
 
     def start(self):
         '''Stop server'''
@@ -124,12 +124,13 @@ class RestServer():
 class ServerModule(mp_module.MPModule):
     ''' Server Module '''
     def __init__(self, mpstate):
-        super(ServerModule, self).__init__(mpstate, "restserver", "restserver module")
+        super(ServerModule, self).__init__(mpstate, "restserver", "restserver module", public=True)
         # Configure server
         self.rest_server = RestServer()
 
-        self.add_command('restserver', self.cmds, \
+        self.add_command('restserver', self.cmds,
             "restserver module", ['start', 'stop', 'address 127.0.0.1:4777'])
+        self.external_endpoints = []
 
     def usage(self):
         '''show help on command line options'''
@@ -146,6 +147,9 @@ class ServerModule(mp_module.MPModule):
                 print("Rest server already running.")
                 return
             self.rest_server.start()
+            for endpoint in self.external_endpoints:
+                self.rest_server.app.add_url_rule(**endpoint)
+
             print("Rest server running: %s:%s" % \
                 (self.rest_server.address, self.rest_server.port))
 
@@ -169,6 +173,15 @@ class ServerModule(mp_module.MPModule):
 
         else:
             print(self.usage())
+
+    def add_endpoint(self, rule: str,
+                     endpoint: typing.Optional[str] = None,
+                     view_func: typing.Optional[typing.Callable] = None,
+                     provide_automatic_options: typing.Optional[bool] = None,
+                     **options: typing.Any):
+        self.external_endpoints.append(dict(**options, rule=rule, endpoint=endpoint, view_func=view_func, provide_automatic_options=provide_automatic_options))
+        if self.rest_server.running():
+            self.rest_server.app.add_url_rule(rule, endpoint, view_func, provide_automatic_options, **options)
 
     def idle_task(self):
         '''called rapidly by mavproxy'''
