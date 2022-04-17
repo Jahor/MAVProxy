@@ -91,6 +91,7 @@ class BatteryModule(mp_module.MPModule):
         if batt_mon >= 4 and self.settings.battwarn > 0 and time.time() > self.last_battery_announce_time + 60*self.settings.battwarn:
             if rbattery_level != self.last_battery_announce:
                 self.say("Flight battery %u percent" % rbattery_level, priority='notification')
+                self.last_battery_announce = rbattery_level
             if rbattery_level <= 20:
                 self.say("Flight battery warning")
             self.last_battery_announce_time = time.time()
